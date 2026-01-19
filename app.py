@@ -14,19 +14,39 @@ st.set_page_config(
 )
 
 # =========================================================
-# DB
+# DB (Neon / Streamlit Cloud)
 # =========================================================
-DB_HOST = os.getenv("DB_HOST", "qprof_postgres")
-DB_PORT = os.getenv("DB_PORT", "5432")
-DB_NAME = os.getenv("DB_NAME", "qprof")
-DB_USER = os.getenv("DB_USER", "qprof_user")
-DB_PASS = os.getenv("DB_PASS", "qprof_pass")
+def get_secret(key: str, default: str | None = None):
+    """
+    Prioriza st.secrets (Streamlit Cloud), se não existir usa env var.
+    """
+    try:
+        if key in st.secrets:
+            return st.secrets[key]
+    except Exception:
+        pass
+    return os.getenv(key, default)
 
-DATABASE_URL = f"postgresql+psycopg2://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+
+DB_HOST = get_secret("DB_HOST", "qprof_postgres")
+DB_PORT = get_secret("DB_PORT", "5432")
+DB_NAME = get_secret("DB_NAME", "qprof")
+DB_USER = get_secret("DB_USER", "qprof_user")
+DB_PASS = get_secret("DB_PASS", "qprof_pass")
+
+# Neon requer SSL
+DB_SSLMODE = get_secret("DB_SSLMODE", "require")
+
+DATABASE_URL = (
+    f"postgresql+psycopg2://{DB_USER}:{DB_PASS}"
+    f"@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    f"?sslmode={DB_SSLMODE}"
+)
 
 
 @st.cache_resource
 def get_engine():
+    # pool_pre_ping evita conexão morta
     return create_engine(DATABASE_URL, pool_pre_ping=True)
 
 
@@ -110,12 +130,12 @@ st.divider()
 
 
 # =========================================================
-# KPIs (regras definidas por você)
+# KPIs (com schema public.)
 # =========================================================
 pl = safe_fetch_one(
     """
     SELECT COALESCE(SUM(vlr_aberto), 0)
-    FROM cobranca_consolidada
+    FROM public.cobranca_consolidada
     """,
     default=0,
     label="PL Securitizadora"
@@ -124,7 +144,7 @@ pl = safe_fetch_one(
 vop_geral = safe_fetch_one(
     """
     SELECT COALESCE(SUM(vlr_aprovado), 0)
-    FROM vops
+    FROM public.vops
     WHERE situacao_operacao IN ('4','6','04','06')
     """,
     default=0,
@@ -134,7 +154,7 @@ vop_geral = safe_fetch_one(
 vop_mensal = safe_fetch_one(
     """
     SELECT COALESCE(SUM(vlr_aprovado), 0)
-    FROM vops
+    FROM public.vops
     WHERE situacao_operacao IN ('4','6','04','06')
       AND date_trunc('month', dta_neg) = date_trunc('month', CURRENT_DATE)
     """,
@@ -145,7 +165,7 @@ vop_mensal = safe_fetch_one(
 vop_diario = safe_fetch_one(
     """
     SELECT COALESCE(SUM(vlr_aprovado), 0)
-    FROM vops
+    FROM public.vops
     WHERE situacao_operacao IN ('4','6','04','06')
       AND dta_neg = CURRENT_DATE
     """,
@@ -154,13 +174,13 @@ vop_diario = safe_fetch_one(
 )
 
 last_update = safe_fetch_one(
-    "SELECT MAX(data_ref) FROM monitore_diario",
+    "SELECT MAX(data_ref) FROM public.monitore_diario",
     default=None
 )
 
 if not last_update:
     last_update = safe_fetch_one(
-        "SELECT MAX(data_ref) FROM cobranca_consolidada",
+        "SELECT MAX(data_ref) FROM public.cobranca_consolidada",
         default=None
     )
 
@@ -211,7 +231,7 @@ with tabs[0]:
                 COALESCE(situacao, 'N/I') AS situacao,
                 COUNT(*) AS qtd,
                 COALESCE(SUM(vlr_aberto), 0) AS vlr_aberto
-            FROM cobranca_consolidada
+            FROM public.cobranca_consolidada
             GROUP BY 1
             ORDER BY vlr_aberto DESC
             LIMIT 20
@@ -229,7 +249,7 @@ with tabs[0]:
                 COALESCE(cedente, 'N/I') AS cedente,
                 COUNT(*) AS qtd,
                 COALESCE(SUM(vlr_aprovado), 0) AS vlr_aprovado
-            FROM vops
+            FROM public.vops
             WHERE situacao_operacao IN ('4','6','04','06')
             GROUP BY 1
             ORDER BY vlr_aprovado DESC
@@ -272,7 +292,7 @@ with tabs[1]:
             cnpj_cpf,
             origem_arquivo,
             data_ref
-        FROM cobranca_consolidada
+        FROM public.cobranca_consolidada
         WHERE 1=1
     """
     params = {}
@@ -327,7 +347,7 @@ with tabs[2]:
             grupo_economico,
             situ_rec,
             origem_arquivo
-        FROM sacado_consolidado
+        FROM public.sacado_consolidado
         ORDER BY dta_vcto DESC NULLS LAST
         LIMIT 2000
     """)
@@ -363,7 +383,7 @@ with tabs[3]:
             vlr_face, vlr_aprovado, vlr_liquido,
             dta_neg, observacao_operacao,
             origem_arquivo
-        FROM vops
+        FROM public.vops
         WHERE 1=1
     """
     params = {}
@@ -400,7 +420,7 @@ with tabs[4]:
 
     df_mon_diario = safe_fetch_df("""
         SELECT *
-        FROM monitore_diario
+        FROM public.monitore_diario
         ORDER BY data_ref DESC NULLS LAST
         LIMIT 2000
     """)
@@ -423,7 +443,7 @@ with tabs[4]:
 
     df_mon_serasa = safe_fetch_df("""
         SELECT *
-        FROM monitore_serasa
+        FROM public.monitore_serasa
         ORDER BY data_ref DESC NULLS LAST
         LIMIT 2000
     """)
@@ -447,3 +467,4 @@ with tabs[4]:
 # FOOTER
 # =========================================================
 st.caption("QPROF • Dashboard • Streamlit")
+
