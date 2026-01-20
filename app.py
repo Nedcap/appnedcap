@@ -119,7 +119,7 @@ def fmt_dt(dt):
 col_left, col_right = st.columns([4, 1])
 
 with col_left:
-    st.title("📊 QPROF - Dashboard")
+    st.title("📊 Ned Capital - Dashboard")
 
 with col_right:
     if st.button("🔄 Atualizar agora", use_container_width=True):
