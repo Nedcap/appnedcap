@@ -8,7 +8,7 @@ from sqlalchemy import create_engine, text
 # CONFIG STREAMLIT
 # =========================================================
 st.set_page_config(
-    page_title="QPROF - Dashboard",
+    page_title="Ned Capital - Dashboard",
     page_icon="📊",
     layout="wide"
 )
@@ -183,7 +183,7 @@ tabs = st.tabs([
 # TAB 1 - CONCENTRAÇÃO (DINÂMICA PIVOT EXCEL)
 # =========================================================
 with tabs[0]:
-    st.subheader("📌 Concentração Cedente / Sacado (Dinâmica)")
+    st.subheader("📌 Concentração Cedente / Sacado")
     st.caption("Regra: sacado não pode representar 20% ou mais do vlr_aberto total do cedente.")
 
     df_pivot = safe_fetch_df("""
@@ -229,7 +229,7 @@ with tabs[0]:
 # TAB 2 - RISCO POR RÓTULO (DINÂMICA)
 # =========================================================
 with tabs[1]:
-    st.subheader("🏷️ Risco por Rótulo (Dinâmica)")
+    st.subheader("🏷️ Risco por Rótulo")
     st.caption("Tabela dinâmica: Rótulo x Valor x %")
 
     df_rotulo = safe_fetch_df("""
