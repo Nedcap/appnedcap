@@ -60,9 +60,6 @@ def fetch_df(sql: str, params: dict | None = None):
 
 
 def safe_fetch_one(sql: str, default=None, label: str | None = None):
-    """
-    Nunca deixa o app quebrar por erro de SQL/tabela ausente.
-    """
     try:
         return fetch_one(sql)
     except Exception as e:
@@ -99,7 +96,6 @@ def fmt_money_cell(x):
 
 
 def fmt_pct_cell(x):
-    # banco guarda decimal: 0.20 = 20%
     if pd.isna(x):
         return ""
     try:
@@ -171,6 +167,7 @@ st.divider()
 # ABAS
 # =========================================================
 tabs = st.tabs([
+    "🏆 Top 10 Cedentes",
     "📌 Concentração Ced/Sac",
     "🏷️ Risco por Rótulo",
     "🧍 Vencidos",
@@ -179,9 +176,47 @@ tabs = st.tabs([
 
 
 # =========================================================
-# TAB 1 - CONCENTRAÇÃO (DINÂMICA PIVOT EXCEL)
+# TAB 1 - TOP 10 CEDENTES (ranking)
 # =========================================================
 with tabs[0]:
+    st.subheader("🏆 Top 10 Cedentes por risco (vlr_aberto)")
+
+    df_top10 = safe_fetch_df("""
+        SELECT
+            cedente,
+            risco_total_cedente
+        FROM public.vw_top10_cedentes_risco
+        ORDER BY risco_total_cedente DESC
+    """)
+
+    if df_top10.empty:
+        st.info("Sem dados para exibir.")
+    else:
+        df_top10["risco_total_cedente"] = df_top10["risco_total_cedente"].map(fmt_money_cell)
+
+        df_top10 = df_top10.rename(columns={
+            "cedente": "Cedente",
+            "risco_total_cedente": "Risco (vlr_aberto)"
+        })
+
+        st.dataframe(
+            df_top10,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Cedente": st.column_config.TextColumn("Cedente", width="large"),
+                "Risco (vlr_aberto)": st.column_config.TextColumn("Risco (vlr_aberto)", width="medium"),
+            }
+        )
+
+        csv = df_top10.to_csv(index=False).encode("utf-8")
+        st.download_button("⬇️ Baixar CSV", csv, "top10_cedentes.csv", "text/csv")
+
+
+# =========================================================
+# TAB 2 - CONCENTRAÇÃO (DINÂMICA COMPLETA - SEM LIMITE)
+# =========================================================
+with tabs[1]:
     st.subheader("📌 Concentração Cedente / Sacado")
     st.caption("Regra: sacado não pode representar 20% ou mais do vlr_aberto total do cedente.")
 
@@ -202,10 +237,9 @@ with tabs[0]:
         df_pivot["pct"] = df_pivot["pct"].map(fmt_pct_cell)
 
         # destaca Total
-        if "sacado" in df_pivot.columns:
-            df_pivot["sacado"] = df_pivot["sacado"].apply(
-                lambda x: "🧾 Total" if str(x).strip().lower() == "total" else x
-            )
+        df_pivot["sacado"] = df_pivot["sacado"].apply(
+            lambda x: "🧾 Total" if str(x).strip().lower() == "total" else x
+        )
 
         # estilo Excel: repetir cedente só na primeira linha do bloco
         last = None
@@ -218,7 +252,6 @@ with tabs[0]:
                 last = c
         df_pivot["cedente"] = ced
 
-        # renomear cabeçalhos (sem mudar nomes internos)
         df_show = df_pivot.rename(columns={
             "cedente": "Cedente",
             "status": "⚑",
@@ -232,8 +265,8 @@ with tabs[0]:
             use_container_width=True,
             hide_index=True,
             column_config={
-                "⚑": st.column_config.TextColumn("⚑", width="small"),
                 "Cedente": st.column_config.TextColumn("Cedente", width="medium"),
+                "⚑": st.column_config.TextColumn("⚑", width="small"),
                 "Sacado": st.column_config.TextColumn("Sacado", width="large"),
                 "Valor": st.column_config.TextColumn("Valor", width="medium"),
                 "%": st.column_config.TextColumn("%", width="small"),
@@ -245,9 +278,9 @@ with tabs[0]:
 
 
 # =========================================================
-# TAB 2 - RISCO POR RÓTULO (DINÂMICA)
+# TAB 3 - RISCO POR RÓTULO (DINÂMICA)
 # =========================================================
-with tabs[1]:
+with tabs[2]:
     st.subheader("🏷️ Risco por Rótulo")
     st.caption("Tabela dinâmica: Rótulo x Valor x %")
 
@@ -288,9 +321,9 @@ with tabs[1]:
 
 
 # =========================================================
-# TAB 3 - VENCIDOS
+# TAB 4 - VENCIDOS
 # =========================================================
-with tabs[2]:
+with tabs[3]:
     st.subheader("🧍 Vencidos")
     st.caption("Se estiver 0 linhas, pode ser que o watcher ainda não carregou essa base.")
 
@@ -309,9 +342,9 @@ with tabs[2]:
 
 
 # =========================================================
-# TAB 4 - MONITORE
+# TAB 5 - MONITORE
 # =========================================================
-with tabs[3]:
+with tabs[4]:
     st.subheader("🛰️ Monitore")
 
     df_mon = safe_fetch_df("""
