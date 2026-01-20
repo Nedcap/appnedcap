@@ -43,7 +43,6 @@ DATABASE_URL = (
 
 @st.cache_resource
 def get_engine():
-    # pool_pre_ping evita conexão morta
     return create_engine(DATABASE_URL, pool_pre_ping=True)
 
 
@@ -188,8 +187,8 @@ with tabs[0]:
 
     df_pivot = safe_fetch_df("""
         SELECT
-            status,
             cedente,
+            status,
             sacado,
             valor,
             pct
@@ -219,9 +218,29 @@ with tabs[0]:
                 last = c
         df_pivot["cedente"] = ced
 
-        st.dataframe(df_pivot, use_container_width=True, hide_index=True)
+        # renomear cabeçalhos (sem mudar nomes internos)
+        df_show = df_pivot.rename(columns={
+            "cedente": "Cedente",
+            "status": "⚑",
+            "sacado": "Sacado",
+            "valor": "Valor",
+            "pct": "%"
+        })
 
-        csv = df_pivot.to_csv(index=False).encode("utf-8")
+        st.dataframe(
+            df_show,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "⚑": st.column_config.TextColumn("⚑", width="small"),
+                "Cedente": st.column_config.TextColumn("Cedente", width="medium"),
+                "Sacado": st.column_config.TextColumn("Sacado", width="large"),
+                "Valor": st.column_config.TextColumn("Valor", width="medium"),
+                "%": st.column_config.TextColumn("%", width="small"),
+            }
+        )
+
+        csv = df_show.to_csv(index=False).encode("utf-8")
         st.download_button("⬇️ Baixar CSV", csv, "concentracao_pivot.csv", "text/csv")
 
 
@@ -247,9 +266,24 @@ with tabs[1]:
         df_rotulo["risco_vlr_aberto"] = df_rotulo["risco_vlr_aberto"].map(fmt_money_cell)
         df_rotulo["pct_total"] = df_rotulo["pct_total"].map(fmt_pct_cell)
 
-        st.dataframe(df_rotulo, use_container_width=True, hide_index=True)
+        df_rot_show = df_rotulo.rename(columns={
+            "rotulo": "Rótulo",
+            "risco_vlr_aberto": "Valor",
+            "pct_total": "%"
+        })
 
-        csv = df_rotulo.to_csv(index=False).encode("utf-8")
+        st.dataframe(
+            df_rot_show,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Rótulo": st.column_config.TextColumn("Rótulo", width="large"),
+                "Valor": st.column_config.TextColumn("Valor", width="medium"),
+                "%": st.column_config.TextColumn("%", width="small"),
+            }
+        )
+
+        csv = df_rot_show.to_csv(index=False).encode("utf-8")
         st.download_button("⬇️ Baixar CSV", csv, "risco_por_rotulo.csv", "text/csv")
 
 
@@ -267,7 +301,6 @@ with tabs[2]:
         LIMIT 2000
     """)
 
-    # formata automaticamente se existirem as colunas
     for col in ["vlr_face", "vlr_aberto", "vlr_desc", "vlr_ocorrencia"]:
         if col in df_sacado.columns:
             df_sacado[col] = df_sacado[col].map(fmt_money_cell)
