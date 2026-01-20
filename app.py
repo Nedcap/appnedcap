@@ -8,7 +8,7 @@ from sqlalchemy import create_engine, text
 # CONFIG STREAMLIT
 # =========================================================
 st.set_page_config(
-    page_title="Ned Capital - Dashboard",
+    page_title="QPROF - Dashboard",
     page_icon="📊",
     layout="wide"
 )
@@ -31,6 +31,7 @@ DB_NAME = get_secret("DB_NAME", "qprof")
 DB_USER = get_secret("DB_USER", "qprof_user")
 DB_PASS = get_secret("DB_PASS", "qprof_pass")
 
+# Neon requer SSL
 DB_SSLMODE = get_secret("DB_SSLMODE", "require")
 
 DATABASE_URL = (
@@ -42,6 +43,7 @@ DATABASE_URL = (
 
 @st.cache_resource
 def get_engine():
+    # pool_pre_ping evita conexão morta
     return create_engine(DATABASE_URL, pool_pre_ping=True)
 
 
@@ -59,6 +61,9 @@ def fetch_df(sql: str, params: dict | None = None):
 
 
 def safe_fetch_one(sql: str, default=None, label: str | None = None):
+    """
+    Nunca deixa o app quebrar por erro de SQL/tabela ausente.
+    """
     try:
         return fetch_one(sql)
     except Exception as e:
@@ -95,6 +100,7 @@ def fmt_money_cell(x):
 
 
 def fmt_pct_cell(x):
+    # banco guarda decimal: 0.20 = 20%
     if pd.isna(x):
         return ""
     try:
@@ -143,6 +149,10 @@ if not df_kpis.empty:
 
 last_update = safe_fetch_one("SELECT last_update FROM public.vw_last_update;", default=None)
 
+
+# =========================================================
+# KPI CARDS
+# =========================================================
 k1, k2, k3, k4, k5 = st.columns([1.3, 1.3, 1.3, 1.3, 1.3])
 with k1:
     st.metric("PL Securitizadora", fmt_money(pl))
@@ -170,121 +180,49 @@ tabs = st.tabs([
 
 
 # =========================================================
-# TAB 1 - CONCENTRAÇÃO (TOP 10 CEDENTES + TABELAS)
+# TAB 1 - CONCENTRAÇÃO (DINÂMICA PIVOT EXCEL)
 # =========================================================
 with tabs[0]:
-    st.subheader("📌 Concentração Cedente / Sacado")
+    st.subheader("📌 Concentração Cedente / Sacado (Dinâmica)")
     st.caption("Regra: sacado não pode representar 20% ou mais do vlr_aberto total do cedente.")
 
-    # ---- TOP 10 CEDENTES POR RISCO (vlr_aberto) ----
-    st.markdown("### Top 10 Cedentes por risco (vlr_aberto)")
-
-    df_top_ced = safe_fetch_df("""
-        WITH base AS (
-          SELECT
-            COALESCE(cedente,'N/I') AS cedente,
-            COALESCE(sacado,'N/I') AS sacado,
-            COALESCE(vlr_aberto,0)::numeric AS vlr_aberto
-          FROM public.cobranca_consolidada
-        ),
-        por_sacado AS (
-          SELECT
+    df_pivot = safe_fetch_df("""
+        SELECT
+            status,
             cedente,
             sacado,
-            SUM(vlr_aberto) AS vlr_aberto_sacado
-          FROM base
-          GROUP BY 1,2
-        ),
-        por_cedente AS (
-          SELECT
-            cedente,
-            SUM(vlr_aberto_sacado) AS vlr_aberto_cedente
-          FROM por_sacado
-          GROUP BY 1
-        ),
-        joined AS (
-          SELECT
-            s.cedente,
-            s.sacado,
-            s.vlr_aberto_sacado,
-            c.vlr_aberto_cedente,
-            CASE
-              WHEN c.vlr_aberto_cedente = 0 THEN 0
-              ELSE s.vlr_aberto_sacado / c.vlr_aberto_cedente
-            END AS pct_no_cedente
-          FROM por_sacado s
-          JOIN por_cedente c USING (cedente)
-        ),
-        resumo AS (
-          SELECT
-            cedente,
-            MAX(vlr_aberto_cedente) AS risco_total_cedente,
-            MAX(pct_no_cedente) AS maior_pct_sacado,
-            COUNT(*) AS qtd_sacados
-          FROM joined
-          GROUP BY 1
-        )
-        SELECT *
-        FROM resumo
-        ORDER BY risco_total_cedente DESC
-        LIMIT 10
+            valor,
+            pct
+        FROM public.vw_concentracao_pivot
     """)
 
-    if df_top_ced.empty:
-        st.info("Sem dados na cobrança consolidada.")
+    if df_pivot.empty:
+        st.info("Sem dados para exibir.")
     else:
-        def status_emoji(pct):
-            try:
-                return "🔴" if float(pct) >= 0.20 else "🟢"
-            except Exception:
-                return "⚪"
+        df_pivot["valor"] = df_pivot["valor"].map(fmt_money_cell)
+        df_pivot["pct"] = df_pivot["pct"].map(fmt_pct_cell)
 
-        df_top_ced["status"] = df_top_ced["maior_pct_sacado"].apply(status_emoji)
-        df_top_ced["risco_total_cedente"] = df_top_ced["risco_total_cedente"].map(fmt_money_cell)
-        df_top_ced["maior_pct_sacado"] = df_top_ced["maior_pct_sacado"].map(fmt_pct_cell)
+        # destaca Total
+        if "sacado" in df_pivot.columns:
+            df_pivot["sacado"] = df_pivot["sacado"].apply(
+                lambda x: "🧾 Total" if str(x).strip().lower() == "total" else x
+            )
 
-        df_top_ced_show = df_top_ced[["status", "cedente", "risco_total_cedente", "qtd_sacados", "maior_pct_sacado"]]
-        st.dataframe(df_top_ced_show, use_container_width=True, hide_index=True)
+        # estilo Excel: repetir cedente só na primeira linha do bloco
+        last = None
+        ced = []
+        for c in df_pivot["cedente"]:
+            if c == last:
+                ced.append("")
+            else:
+                ced.append(c)
+                last = c
+        df_pivot["cedente"] = ced
 
-    st.divider()
+        st.dataframe(df_pivot, use_container_width=True, hide_index=True)
 
-    # ---- TABELAS POR CEDENTE ----
-    st.markdown("### Detalhamento por Cedente (Sacados)")
-
-    if df_top_ced.empty:
-        st.stop()
-
-    cedente_escolhido = st.selectbox(
-        "Selecione o cedente:",
-        df_top_ced["cedente"].tolist()
-    )
-
-    df_det = safe_fetch_df("""
-        SELECT
-            sacado,
-            vlr_aberto_sacado,
-            vlr_aberto_cedente,
-            pct_no_cedente,
-            flag_ultrapassa_20
-        FROM public.vw_concentracao_cedente_sacado
-        WHERE cedente = :cedente
-        ORDER BY pct_no_cedente DESC
-        LIMIT 500
-    """, params={"cedente": cedente_escolhido})
-
-    if df_det.empty:
-        st.info("Sem sacados para este cedente.")
-    else:
-        df_det["status"] = df_det["flag_ultrapassa_20"].apply(lambda x: "🔴" if x else "🟢")
-        df_det["vlr_aberto_sacado"] = df_det["vlr_aberto_sacado"].map(fmt_money_cell)
-        df_det["vlr_aberto_cedente"] = df_det["vlr_aberto_cedente"].map(fmt_money_cell)
-        df_det["pct_no_cedente"] = df_det["pct_no_cedente"].map(fmt_pct_cell)
-
-        df_det_show = df_det[["status", "sacado", "vlr_aberto_sacado", "pct_no_cedente"]]
-        st.dataframe(df_det_show, use_container_width=True, hide_index=True)
-
-        csv = df_det_show.to_csv(index=False).encode("utf-8")
-        st.download_button("⬇️ Baixar CSV (Cedente)", csv, "concentracao_cedente.csv", "text/csv")
+        csv = df_pivot.to_csv(index=False).encode("utf-8")
+        st.download_button("⬇️ Baixar CSV", csv, "concentracao_pivot.csv", "text/csv")
 
 
 # =========================================================
@@ -292,6 +230,7 @@ with tabs[0]:
 # =========================================================
 with tabs[1]:
     st.subheader("🏷️ Risco por Rótulo (Dinâmica)")
+    st.caption("Tabela dinâmica: Rótulo x Valor x %")
 
     df_rotulo = safe_fetch_df("""
         SELECT
@@ -328,6 +267,7 @@ with tabs[2]:
         LIMIT 2000
     """)
 
+    # formata automaticamente se existirem as colunas
     for col in ["vlr_face", "vlr_aberto", "vlr_desc", "vlr_ocorrencia"]:
         if col in df_sacado.columns:
             df_sacado[col] = df_sacado[col].map(fmt_money_cell)
@@ -361,4 +301,4 @@ with tabs[3]:
 # =========================================================
 # FOOTER
 # =========================================================
-st.caption("Ned Capital • Dashboard • Streamlit")
+st.caption("NED CAPITAL • Dashboard • Streamlit")
