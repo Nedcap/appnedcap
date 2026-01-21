@@ -337,18 +337,47 @@ with tabs[3]:
     st.caption("Se estiver 0 linhas, pode ser que o watcher ainda não carregou essa base.")
 
     df_sacado = safe_fetch_df("""
-        SELECT *
+        SELECT
+            filial              AS "Filial",
+            acompanhamento      AS "Acompanhamento",
+            s_num               AS "S. Núm.",
+            dta_vcto            AS "Dta. Vcto.",
+            vlr_face            AS "Vlr. Face",
+            vlr_aberto          AS "Vlr. Aberto",
+            vlr_desc            AS "Vlr. Desc.",
+            cod_sacado          AS "Cód. Sacado",
+            sacado              AS "Sacado",
+            cedente             AS "Cedente",
+            ocorrencias         AS "Ocorrências",
+            vlr_ocorrencia      AS "Vlr. Ocorrência",
+            observacoes         AS "Observações",
+            rotulo              AS "Rótulo",
+            agente              AS "Agente",
+            carteira            AS "Carteira",
+            grupo_economico     AS "Grupo Econômico",
+            sit_rec             AS "Sit. Rec.",
+            usuario_ocorrencia  AS "Usuário Ocorrência",
+            seq_tit             AS "Seq. Tit."
         FROM public.sacado_consolidado
         ORDER BY dta_vcto DESC NULLS LAST
         LIMIT 2000
     """)
 
-    for col in ["vlr_face", "vlr_aberto", "vlr_desc", "vlr_ocorrencia"]:
+    # Formatação monetária
+    for col in ["Vlr. Face", "Vlr. Aberto", "Vlr. Desc.", "Vlr. Ocorrência"]:
         if col in df_sacado.columns:
             df_sacado[col] = df_sacado[col].map(fmt_money_cell)
 
-    st.dataframe(df_sacado, use_container_width=True)
+    # S. Núm. do jeito original (sem .0)
+    if "S. Núm." in df_sacado.columns:
+        df_sacado["S. Núm."] = (
+            df_sacado["S. Núm."]
+            .fillna("")
+            .astype(str)
+            .str.replace(".0", "", regex=False)
+        )
 
+    st.dataframe(df_sacado, use_container_width=True, hide_index=True)
 
 # =========================================================
 # TAB 5 - MONITORE
