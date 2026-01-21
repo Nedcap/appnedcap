@@ -108,10 +108,19 @@ def fmt_dt(dt):
     try:
         if dt is None or pd.isna(dt):
             return "N/D"
-        return pd.to_datetime(dt).strftime("%d/%m/%Y %H:%M:%S")
+
+        ts = pd.to_datetime(dt)
+
+        # Se vier timezone-aware, converte
+        if ts.tzinfo is not None:
+            ts = ts.tz_convert("America/Sao_Paulo")
+        else:
+            # Se vier sem tz, assume UTC e converte
+            ts = ts.tz_localize("UTC").tz_convert("America/Sao_Paulo")
+
+        return ts.strftime("%H:%M")   # só hora e minuto
     except Exception:
         return str(dt)
-
 
 # =========================================================
 # TOP BAR
