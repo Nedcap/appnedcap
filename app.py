@@ -387,26 +387,64 @@ with tabs[4]:
 
     df_mon = safe_fetch_df("""
         SELECT
-            cedente           AS "Cedente",
-            saldo_anterior    AS "Saldo Anterior",
-            saldo_atual       AS "Saldo Atual",
-            evolucao          AS "Evolução",
-            variacao          AS "Variação",
-            negativacoes      AS "Negativações",
-            pefin             AS "PEFIN",
-            refin             AS "REFIN",
-            protestos         AS "Protestos",
-            acao_jud          AS "Ação Jud.",
-            div_vencida       AS "Dívida Vencida",
-            observacoes       AS "Observações"
+            cedente,
+            saldo_anterior,
+            saldo_atual,
+            evolucao,
+            variacao,
+            negativacoes,
+            pefin,
+            refin,
+            protestos,
+            acao_jud,
+            div_vencida,
+            observacoes
         FROM public.vw_monitore_dashboard
-        ORDER BY Cedente
-        LIMIT 2000
+        ORDER BY cedente
     """)
 
     if df_mon.empty:
         st.info("Sem dados para exibir.")
     else:
+        # -----------------------------
+        # Formatação monetária (BR)
+        # -----------------------------
+        money_cols = [
+            "saldo_anterior",
+            "saldo_atual",
+            "evolucao",
+            "pefin",
+            "refin",
+            "protestos",
+            "acao_jud",
+            "div_vencida",
+        ]
+
+        for col in money_cols:
+            if col in df_mon.columns:
+                df_mon[col] = df_mon[col].map(fmt_money_cell)
+
+        if "variacao" in df_mon.columns:
+            df_mon["variacao"] = df_mon["variacao"].map(fmt_pct_cell)
+
+        # -----------------------------
+        # Nomes amigáveis
+        # -----------------------------
+        df_mon = df_mon.rename(columns={
+            "cedente": "Cedente",
+            "saldo_anterior": "Saldo Anterior",
+            "saldo_atual": "Saldo Atual",
+            "evolucao": "Evolução",
+            "variacao": "Variação",
+            "negativacoes": "Negativações",
+            "pefin": "PEFIN",
+            "refin": "REFIN",
+            "protestos": "Protestos",
+            "acao_jud": "Ação Jud.",
+            "div_vencida": "Dívida Venc.",
+            "observacoes": "Observações",
+        })
+
         st.dataframe(
             df_mon,
             use_container_width=True,
@@ -422,7 +460,7 @@ with tabs[4]:
                 "REFIN": st.column_config.TextColumn("REFIN", width="small"),
                 "Protestos": st.column_config.TextColumn("Protestos", width="small"),
                 "Ação Jud.": st.column_config.TextColumn("Ação Jud.", width="small"),
-                "Dívida Vencida": st.column_config.TextColumn("Dívida Vencida", width="small"),
+                "Dívida Venc.": st.column_config.TextColumn("Dívida Venc.", width="small"),
                 "Observações": st.column_config.TextColumn("Observações", width="large"),
             }
         )
