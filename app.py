@@ -386,21 +386,46 @@ with tabs[4]:
     st.subheader("🛰️ Monitore")
 
     df_mon = safe_fetch_df("""
-        SELECT *
-        FROM public.monitore_diario
-        ORDER BY data_ref DESC NULLS LAST, ingested_at DESC NULLS LAST
+        SELECT
+            cedente           AS "Cedente",
+            saldo_anterior    AS "Saldo Anterior",
+            saldo_atual       AS "Saldo Atual",
+            evolucao          AS "Evolução",
+            variacao          AS "Variação",
+            negativacoes      AS "Negativações",
+            pefin             AS "PEFIN",
+            refin             AS "REFIN",
+            protestos         AS "Protestos",
+            acao_jud          AS "Ação Jud.",
+            div_vencida       AS "Dívida Vencida",
+            observacoes       AS "Observações"
+        FROM public.vw_monitore_dashboard
+        ORDER BY Cedente
         LIMIT 2000
     """)
 
-    if not df_mon.empty:
-        for col in ["saldo_anterior", "saldo_atual", "evolucao"]:
-            if col in df_mon.columns:
-                df_mon[col] = df_mon[col].map(fmt_money_cell)
-        if "variacao" in df_mon.columns:
-            df_mon["variacao"] = df_mon["variacao"].map(fmt_pct_cell)
-
-    st.dataframe(df_mon, use_container_width=True)
-
+    if df_mon.empty:
+        st.info("Sem dados para exibir.")
+    else:
+        st.dataframe(
+            df_mon,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Cedente": st.column_config.TextColumn("Cedente", width="large"),
+                "Saldo Anterior": st.column_config.TextColumn("Saldo Anterior", width="medium"),
+                "Saldo Atual": st.column_config.TextColumn("Saldo Atual", width="medium"),
+                "Evolução": st.column_config.TextColumn("Evolução", width="medium"),
+                "Variação": st.column_config.TextColumn("Variação", width="small"),
+                "Negativações": st.column_config.TextColumn("Negativações", width="large"),
+                "PEFIN": st.column_config.TextColumn("PEFIN", width="small"),
+                "REFIN": st.column_config.TextColumn("REFIN", width="small"),
+                "Protestos": st.column_config.TextColumn("Protestos", width="small"),
+                "Ação Jud.": st.column_config.TextColumn("Ação Jud.", width="small"),
+                "Dívida Vencida": st.column_config.TextColumn("Dívida Vencida", width="small"),
+                "Observações": st.column_config.TextColumn("Observações", width="large"),
+            }
+        )
 
 # =========================================================
 # FOOTER
